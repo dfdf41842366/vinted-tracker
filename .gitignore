@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+*.pyo
+.env
+orders_cache.json
+attachments/
+*.log
+.DS_Store
+venv/
+.venv/

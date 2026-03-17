@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Vinted Tracker — lentujafashion</title>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#0c0e12;--card:#161a1e;--card2:#1c2127;--elev:#1e2329;--border:#1e2228;--border2:#2a2f36;--text:#e4e6ea;--text2:#8b929a;--muted:#5c6370;--accent:#09c283;--accentD:rgba(9,194,131,.12);--info:#3b82f6;--infoD:rgba(59,130,246,.12);--cyan:#06b6d4;--cyanD:rgba(6,182,212,.12);--warn:#f59e0b;--warnD:rgba(245,158,11,.12);--danger:#ef4444;--dangerD:rgba(239,68,68,.12);--purple:#a78bfa;--purpleD:rgba(167,139,250,.12);--green:#10b981;--greenD:rgba(16,185,129,.12);--r:10px;--rs:6px;--font:'Outfit','DM Sans',-apple-system,sans-serif;--mono:'JetBrains Mono',monospace}
+html{font-size:15px}body{font-family:var(--font);background:var(--bg);color:var(--text);min-height:100vh;-webkit-font-smoothing:antialiased}
+::-webkit-scrollbar{width:5px;height:5px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:var(--border2);border-radius:3px}
+@keyframes pulse-dot{0%,100%{opacity:1}50%{opacity:.3}}
+@keyframes fade-in{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+@keyframes slide-up{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+.topbar{display:flex;align-items:center;justify-content:space-between;padding:16px 24px;border-bottom:1px solid var(--border);position:sticky;top:0;z-index:50;background:rgba(12,14,18,.92);backdrop-filter:blur(12px)}
+.topbar-left{display:flex;align-items:center;gap:12px}
+.logo{width:34px;height:34px;border-radius:8px;background:linear-gradient(135deg,var(--accent),#06a06f);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:15px;color:#fff;box-shadow:0 2px 10px rgba(9,194,131,.3)}
+.topbar h1{font-size:1.05rem;font-weight:700;letter-spacing:-.3px}.topbar .sub{font-size:.68rem;color:var(--muted);font-weight:500}
+.btn{display:inline-flex;align-items:center;gap:7px;padding:8px 16px;border:1px solid var(--border2);border-radius:var(--rs);background:var(--card);color:var(--text);font-family:var(--font);font-size:.82rem;font-weight:600;cursor:pointer;transition:all .15s;white-space:nowrap}
+.btn:hover{background:var(--card2);border-color:var(--muted)}.btn:active{transform:scale(.98)}
+.btn-primary{background:var(--accent);color:#fff;border-color:var(--accent)}.btn-primary:hover{background:#07a873}
+.spinner{width:14px;height:14px;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:spin .6s linear infinite}
+.main{padding:20px 24px;max-width:1440px;margin:0 auto}
+
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:20px}
+.stat{background:var(--card);border:1px solid var(--border);border-radius:var(--r);padding:14px 16px;animation:fade-in .3s ease both}
+.stat-label{font-size:.68rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;margin-bottom:4px}
+.stat-value{font-size:1.35rem;font-weight:700;letter-spacing:-.5px;font-family:var(--mono)}
+
+.toolbar{display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap;align-items:center}
+.search{flex:1;min-width:180;position:relative}
+.search svg{position:absolute;left:11px;top:50%;transform:translateY(-50%);color:var(--muted)}
+.search input{width:100%;padding:8px 12px 8px 32px;border:1px solid var(--border);border-radius:var(--rs);background:var(--card);color:var(--text);font-family:var(--font);font-size:.82rem;outline:none}
+.search input:focus{border-color:var(--accent)}.search input::placeholder{color:var(--muted)}
+.chips{display:flex;gap:5px;flex-wrap:wrap}
+.chip{padding:6px 13px;border-radius:20px;font-size:.74rem;font-weight:600;border:1px solid var(--border);background:transparent;color:var(--text2);cursor:pointer;font-family:var(--font);transition:all .15s}
+.chip:hover{border-color:var(--muted);color:var(--text)}
+.chip.on{background:var(--accentD);border-color:var(--accent);color:var(--accent)}
+.chip.on-w{background:var(--warnD);border-color:var(--warn);color:var(--warn)}
+.chip.on-d{background:var(--dangerD);border-color:var(--danger);color:var(--danger)}
+
+.table-wrap{background:var(--card);border:1px solid var(--border);border-radius:var(--r);overflow:hidden}
+table{width:100%;border-collapse:collapse}
+thead th{padding:11px 14px;font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);text-align:left;border-bottom:1px solid var(--border);cursor:pointer;user-select:none;white-space:nowrap;position:sticky;top:0;background:var(--card)}
+thead th:hover{color:var(--text2)}
+tbody tr{border-bottom:1px solid var(--border);transition:background .1s;cursor:pointer}
+tbody tr:hover{background:var(--card2)}tbody tr:last-child{border-bottom:none}
+tbody tr.row-ret{background:rgba(239,68,68,.05)}tbody tr.row-ret:hover{background:rgba(239,68,68,.09)}
+tbody tr.row-can{background:rgba(245,158,11,.04)}tbody tr.row-can:hover{background:rgba(245,158,11,.08)}
+td{padding:11px 14px;font-size:.84rem;vertical-align:middle}
+.td-id{font-family:var(--mono);font-size:.78rem;color:var(--accent);font-weight:500}
+.td-item{max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.td-price{font-family:var(--mono);font-size:.82rem;font-weight:600}
+.td-buyer{color:var(--text2);font-size:.82rem}
+.td-date{color:var(--text2);font-size:.78rem;white-space:nowrap}
+
+.badge{display:inline-flex;align-items:center;gap:5px;padding:4px 10px;border-radius:20px;font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.4px;white-space:nowrap}
+.dot{width:6px;height:6px;border-radius:50%;background:currentColor}
+.dot.pulse{animation:pulse-dot 1.5s ease infinite}
+.b-sold{background:var(--infoD);color:var(--info)}.b-label_created{background:var(--purpleD);color:var(--purple)}
+.b-shipped,.b-in_transit{background:var(--cyanD);color:var(--cyan)}.b-awaiting_collection{background:var(--warnD);color:var(--warn)}
+.b-delivered,.b-completed{background:var(--greenD);color:var(--green)}.b-paid{background:rgba(14,230,151,.15);color:#0ee697}
+.b-cancelled{background:var(--warnD);color:var(--warn)}.b-return_requested,.b-returned,.b-refunded,.b-delivery_failed{background:var(--dangerD);color:var(--danger)}
+.b-suspended{background:var(--warnD);color:var(--warn)}.b-unknown{background:rgba(255,255,255,.06);color:var(--muted)}
+
+.att-badge{display:inline-flex;align-items:center;gap:3px;padding:2px 7px;border-radius:4px;font-size:.66rem;font-weight:700}
+.att-label{background:var(--purpleD);color:var(--purple)}.att-return{background:var(--dangerD);color:var(--danger)}
+
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);backdrop-filter:blur(4px);z-index:200;display:none;align-items:center;justify-content:center;padding:20px}
+.overlay.open{display:flex}
+.modal{background:var(--elev);border:1px solid var(--border2);border-radius:14px;width:100%;max-width:600px;max-height:85vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.5);animation:slide-up .2s ease}
+.modal-hdr{display:flex;align-items:center;justify-content:space-between;padding:18px 22px;border-bottom:1px solid var(--border)}
+.modal-hdr h2{font-size:1rem;font-weight:700}
+.close-btn{width:28px;height:28px;border:none;background:rgba(255,255,255,.06);border-radius:6px;color:var(--text2);cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center}
+.close-btn:hover{background:rgba(255,255,255,.1)}
+.modal-body{padding:18px 22px}
+.detail-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:22px}
+.detail-grid label{display:block;font-size:.68rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:3px}
+.detail-grid .val{font-size:.88rem;font-weight:500}
+.section-title{font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin-bottom:12px}
+.timeline{position:relative;padding-left:22px}
+.timeline::before{content:'';position:absolute;left:6px;top:4px;bottom:4px;width:2px;background:var(--border2);border-radius:1px}
+.tl-ev{position:relative;padding-bottom:16px}.tl-ev:last-child{padding-bottom:0}
+.tl-dot{position:absolute;left:-18px;top:3px;width:10px;height:10px;border-radius:50%;border:2px solid var(--accent);background:var(--elev)}
+.tl-ev.ret .tl-dot{border-color:var(--danger)}.tl-ev.can .tl-dot{border-color:var(--warn)}
+.tl-status{font-size:.82rem;font-weight:600;margin-bottom:1px}
+.tl-date{font-size:.74rem;color:var(--muted)}.tl-detail{font-size:.76rem;color:var(--text2);margin-top:2px;max-width:400px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+.att-item{display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--border);border-radius:8px;text-decoration:none;color:var(--text);margin-bottom:6px;transition:all .15s}
+.att-item:hover{background:rgba(255,255,255,.04);border-color:var(--border2)}
+.att-icon{width:30px;height:30px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0}
+.att-icon.lbl{background:var(--purpleD);color:var(--purple)}.att-icon.ret{background:var(--dangerD);color:var(--danger)}
+.att-info{flex:1;min-width:0}.att-name{font-size:.82rem;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.att-type{font-size:.7rem;color:var(--muted);text-transform:capitalize}
+.att-dl{font-size:.76rem;color:var(--accent);font-weight:600}
+
+.empty{text-align:center;padding:50px 20px}.empty-icon{font-size:2rem;margin-bottom:8px}.empty h3{font-weight:600;margin-bottom:6px}.empty p{font-size:.88rem;color:var(--text2);max-width:340px;margin:0 auto 16px}
+
+.toast{position:fixed;bottom:24px;right:24px;padding:12px 18px;border-radius:var(--rs);font-size:.85rem;font-weight:500;z-index:400;animation:fade-in .25s ease;max-width:360px}
+.toast.ok{background:#0b3d28;color:var(--accent);border:1px solid rgba(9,194,131,.25)}
+.toast.err{background:#3d1010;color:var(--danger);border:1px solid rgba(239,68,68,.25)}
+
+.live-dot{width:7px;height:7px;border-radius:50%;background:var(--accent);box-shadow:0 0 6px var(--accent);display:inline-block}
+
+@media(max-width:900px){.main{padding:14px}.hide-m{display:none}.detail-grid{grid-template-columns:1fr}}
+@media(max-width:600px){.topbar{padding:12px 14px}.modal{border-radius:14px 14px 0 0;max-height:90vh}}
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="topbar-left">
+    <div class="logo">V</div>
+    <div><div><h1>Order Tracker</h1></div><div class="sub">lentujafashion · Cloud · Auto-sync every 15 min</div></div>
+  </div>
+  <div style="display:flex;gap:8px;align-items:center">
+    <span id="syncStatus" style="font-size:.72rem;color:var(--muted);display:flex;align-items:center;gap:6px"><span class="live-dot"></span>Ready</span>
+    <button class="btn btn-primary" onclick="refresh()" id="refreshBtn">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/></svg>
+      Fetch Orders
+    </button>
+  </div>
+</header>
+
+<main class="main">
+  <div class="stats" id="statsGrid"></div>
+  <div class="toolbar">
+    <div class="search">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+      <input id="searchInput" placeholder="Search orders, items, buyers…" oninput="render()">
+    </div>
+    <div class="chips" id="chips"></div>
+  </div>
+  <div class="table-wrap">
+    <table><thead><tr>
+      <th onclick="sortBy('order_id')">Order</th>
+      <th onclick="sortBy('item_name')">Item</th>
+      <th onclick="sortBy('price')">Price</th>
+      <th onclick="sortBy('buyer')" class="hide-m">Buyer</th>
+      <th onclick="sortBy('current_status')">Status</th>
+      <th class="hide-m">Files</th>
+      <th onclick="sortBy('last_updated')">Updated</th>
+    </tr></thead><tbody id="tbody"></tbody></table>
+    <div class="empty" id="empty" style="display:none">
+      <div class="empty-icon">📦</div>
+      <h3>No orders yet</h3>
+      <p>Click "Fetch Orders" to scan your Vinted emails via IMAP.</p>
+      <button class="btn btn-primary" onclick="refresh()">Fetch Now</button>
+    </div>
+  </div>
+</main>
+
+<div class="overlay" id="overlay" onclick="closeModal(event)">
+  <div class="modal" onclick="event.stopPropagation()">
+    <div class="modal-hdr"><h2 id="modalTitle"></h2><button class="close-btn" onclick="closeModal()">×</button></div>
+    <div class="modal-body" id="modalBody"></div>
+  </div>
+</div>
+
+<script>
+let ALL=[], FILTER='all', SORT={k:'last_updated',d:'desc'}, REFRESHING=false;
+const STATUS_LABELS={sold:'Sold',label_created:'Label Created',shipped:'Shipped',in_transit:'In Transit',awaiting_collection:'Awaiting Collection',delivered:'Delivered',completed:'Completed',paid:'Paid',suspended:'Suspended',cancelled:'Cancelled',return_requested:'Return Requested',return_shipped:'Return Shipped',returned:'Returned',refunded:'Refunded',delivery_failed:'Delivery Failed'};
+const LIVE_STATUSES=new Set(['in_transit','shipped','awaiting_collection']);
+
+document.addEventListener('DOMContentLoaded',()=>{
+  buildChips();
+  load();
+  // Auto-poll every 5 minutes to pick up background syncs
+  setInterval(load, 5*60*1000);
+});
+
+function buildChips(){
+  const c=document.getElementById('chips');
+  [{k:'all',l:'All'},{k:'sold',l:'New Sales'},{k:'shipped',l:'In Transit'},{k:'delivered',l:'Delivered'},{k:'returns',l:'⚠ Returns',cls:'d'},{k:'cancelled',l:'✕ Cancelled',cls:'w'}].forEach(ch=>{
+    const b=document.createElement('button');
+    b.className='chip'+(FILTER===ch.k?(ch.cls==='w'?' on-w':ch.cls==='d'?' on-d':' on'):'');
+    b.textContent=ch.l;
+    b.onclick=()=>{FILTER=ch.k;buildChips();render()};
+    c.appendChild(b);
+  });
+}
+
+async function load(){
+  try{
+    const r=await fetch('/api/orders');const d=await r.json();
+    ALL=d.orders||[];updateStats(d.stats||{});render();
+  }catch(e){console.error(e)}
+}
+
+async function refresh(){
+  if(REFRESHING)return;REFRESHING=true;
+  const btn=document.getElementById('refreshBtn');
+  btn.innerHTML='<div class="spinner"></div> Scanning Gmail…';btn.disabled=true;
+  document.getElementById('syncStatus').innerHTML='<div class="spinner" style="width:10px;height:10px;border-width:1.5px"></div> Scanning…';
+  try{
+    const r=await fetch('/api/refresh',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({days_back:90})});
+    const d=await r.json();
+    if(d.success){toast(d.message,'ok');await load()}
+    else toast(d.error||'Failed','err');
+  }catch(e){toast('Connection error','err')}
+  finally{REFRESHING=false;btn.innerHTML='<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/></svg> Fetch Orders';btn.disabled=false;document.getElementById('syncStatus').innerHTML='<span class="live-dot"></span> Synced · '+ALL.length+' orders'}
+}
+
+function updateStats(s){
+  const lastSync=s.last_fetch?fmtDate(s.last_fetch):'Never';
+  document.getElementById('syncStatus').innerHTML='<span class="live-dot"></span> '+lastSync+' · '+s.total_orders+' orders';
+  document.getElementById('statsGrid').innerHTML=[
+    {l:'Total Orders',v:s.total_orders||0,c:'var(--text)'},
+    {l:'In Transit',v:s.in_transit||0,c:'var(--cyan)'},
+    {l:'Delivered',v:s.delivered||0,c:'var(--green)'},
+    {l:'Revenue',v:'£'+(s.total_revenue||0).toFixed(2),c:'var(--accent)'},
+    {l:'Returns',v:s.returns||0,c:'var(--danger)'},
+    {l:'Cancelled',v:s.cancellations||0,c:'var(--warn)'},
+  ].map((s,i)=>`<div class="stat" style="animation-delay:${i*.04}s"><div class="stat-label">${s.l}</div><div class="stat-value" style="color:${s.c}">${s.v}</div></div>`).join('');
+}
+
+function render(){
+  let list=[...ALL];const q=document.getElementById('searchInput').value.toLowerCase();
+  if(q)list=list.filter(o=>(o.order_id||'').toLowerCase().includes(q)||(o.item_name||'').toLowerCase().includes(q)||(o.buyer||'').toLowerCase().includes(q));
+  if(FILTER==='sold')list=list.filter(o=>['sold','label_created'].includes(o.current_status));
+  else if(FILTER==='shipped')list=list.filter(o=>['shipped','in_transit','awaiting_collection'].includes(o.current_status));
+  else if(FILTER==='delivered')list=list.filter(o=>['delivered','completed','paid'].includes(o.current_status));
+  else if(FILTER==='returns')list=list.filter(o=>o.is_return);
+  else if(FILTER==='cancelled')list=list.filter(o=>o.is_cancelled);
+  list.sort((a,b)=>{let va=a[SORT.k]||'',vb=b[SORT.k]||'';if(SORT.k==='price'){va=parseFloat(va)||0;vb=parseFloat(vb)||0}return va<vb?(SORT.d==='asc'?-1:1):va>vb?(SORT.d==='asc'?1:-1):0});
+  const tb=document.getElementById('tbody'),em=document.getElementById('empty');
+  if(!ALL.length){tb.innerHTML='';em.style.display='block';return}
+  em.style.display=list.length?'none':'block';
+  tb.innerHTML=list.map((o,i)=>{
+    const rc=o.is_return?'row-ret':o.is_cancelled?'row-can':'';
+    const live=LIVE_STATUSES.has(o.current_status);
+    const p=o.price?`${o.currency||'£'}${parseFloat(o.price).toFixed(2)}`:'—';
+    let att='';
+    if(o.attachments&&o.attachments.length){
+      const lb=o.attachments.filter(a=>a.type==='shipping_label');
+      const rt=o.attachments.filter(a=>a.type==='return_form');
+      if(lb.length)att+='<span class="att-badge att-label">📄 Label</span> ';
+      if(rt.length)att+='<span class="att-badge att-return">↩ Return</span>';
+    }
+    return`<tr class="${rc}" onclick="showOrder('${esc(o.order_id)}')" style="animation:fade-in .2s ease ${i*.015}s both">
+      <td class="td-id">${esc(o.order_id.length>12?o.order_id.slice(0,12)+'…':o.order_id)}</td>
+      <td class="td-item" title="${esc(o.item_name)}">${esc(o.item_name)}</td>
+      <td class="td-price">${p}</td>
+      <td class="td-buyer hide-m">${esc(o.buyer||'—')}</td>
+      <td><span class="badge b-${o.current_status||'unknown'}"><span class="dot${live?' pulse':''}"></span>${STATUS_LABELS[o.current_status]||o.current_status||'Unknown'}</span></td>
+      <td class="hide-m">${att||'<span style="color:var(--muted)">—</span>'}</td>
+      <td class="td-date">${fmtDate(o.last_updated)}</td>
+    </tr>`}).join('');
+}
+
+function showOrder(id){
+  const o=ALL.find(x=>x.order_id===id);if(!o)return;
+  document.getElementById('modalTitle').textContent='Order #'+o.order_id;
+  const p=o.price?`${o.currency||'£'}${parseFloat(o.price).toFixed(2)}`:'—';
+  let h=`<div class="detail-grid">
+    <div><label>Item</label><div class="val">${esc(o.item_name)}</div></div>
+    <div><label>Status</label><div><span class="badge b-${o.current_status}"><span class="dot"></span>${STATUS_LABELS[o.current_status]||o.current_status}</span></div></div>
+    <div><label>Price</label><div class="val">${p}</div></div>
+    <div><label>Buyer</label><div class="val">${esc(o.buyer||'—')}</div></div>
+  </div>`;
+  if(o.events&&o.events.length){
+    h+=`<div class="section-title">Status Timeline</div><div class="timeline">`;
+    o.events.forEach(e=>{
+      const cls=['return_requested','returned','refunded','delivery_failed'].includes(e.status)?'ret':e.status==='cancelled'?'can':'';
+      h+=`<div class="tl-ev ${cls}"><div class="tl-dot"></div>
+        <div class="tl-status">${STATUS_LABELS[e.status]||e.status}</div>
+        <div class="tl-date">${fmtFull(e.date)}</div>
+        <div class="tl-detail" title="${esc(e.detail)}">${esc(e.detail)}</div></div>`;
+    });
+    h+=`</div>`;
+  }
+  if(o.attachments&&o.attachments.length){
+    h+=`<div style="margin-top:22px"><div class="section-title">Shipping Labels & Return Forms</div>`;
+    o.attachments.forEach(a=>{
+      const ic=a.type==='shipping_label'?'lbl':'ret';
+      const em=a.type==='shipping_label'?'📄':'↩️';
+      h+=`<a class="att-item" href="${a.path}" target="_blank" download>
+        <div class="att-icon ${ic}">${em}</div>
+        <div class="att-info"><div class="att-name">${esc(a.filename)}</div><div class="att-type">${a.type.replace(/_/g,' ')}${a.size?' · '+fmtBytes(a.size):''}</div></div>
+        <div class="att-dl">Download ↓</div></a>`;
+    });
+    h+=`</div>`;
+  }
+  document.getElementById('modalBody').innerHTML=h;
+  document.getElementById('overlay').classList.add('open');
+  document.body.style.overflow='hidden';
+}
+
+function sortBy(k){if(SORT.k===k)SORT.d=SORT.d==='asc'?'desc':'asc';else{SORT.k=k;SORT.d='desc'}render()}
+function closeModal(e){if(e&&e.target!==document.getElementById('overlay'))return;document.getElementById('overlay').classList.remove('open');document.body.style.overflow=''}
+document.addEventListener('keydown',e=>{if(e.key==='Escape')closeModal()});
+
+function fmtDate(iso){if(!iso)return'—';try{const d=new Date(iso),n=new Date(),df=n-d;if(df<3600000)return Math.max(1,Math.floor(df/60000))+'m ago';if(df<86400000)return Math.floor(df/3600000)+'h ago';if(df<604800000)return Math.floor(df/86400000)+'d ago';return d.toLocaleDateString('en-GB',{day:'numeric',month:'short'})}catch{return iso.slice(0,10)}}
+function fmtFull(iso){if(!iso)return'—';const d=new Date(iso);return d.toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'})+' '+d.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})}
+function fmtBytes(b){if(b<1024)return b+' B';if(b<1048576)return(b/1024).toFixed(0)+' KB';return(b/1048576).toFixed(1)+' MB'}
+function esc(s){return s?(s+'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'):''}
+function toast(m,t='ok'){const d=document.createElement('div');d.className='toast '+t;d.textContent=m;document.body.appendChild(d);setTimeout(()=>{d.style.opacity='0';d.style.transition='opacity .3s';setTimeout(()=>d.remove(),300)},4000)}
+</script>
+</body>
+</html>
