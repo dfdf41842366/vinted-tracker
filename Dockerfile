@@ -19,11 +19,4 @@ ENV PYTHONUNBUFFERED=1
 EXPOSE 8080
 
 # Run with gunicorn (production WSGI server)
-CMD gunicorn app:app \
-    --bind 0.0.0.0:${PORT} \
-    --workers 2 \
-    --threads 4 \
-    --timeout 120 \
-    --access-logfile - \
-    --error-logfile - \
-    --preload
+CMD ["sh", "-c", "gunicorn app:app --bind 0.0.0.0:${PORT:-8080} --workers 2 --threads 4 --timeout 120 --access-logfile - --error-logfile - --preload"]
