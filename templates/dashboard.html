@@ -105,6 +105,13 @@ td{padding:11px 14px;font-size:.84rem;vertical-align:middle}
 
 .live-dot{width:7px;height:7px;border-radius:50%;background:var(--accent);box-shadow:0 0 6px var(--accent);display:inline-block}
 
+.edit-section{margin-top:22px;padding-top:18px;border-top:1px solid var(--border)}
+.edit-row{display:flex;gap:8px;align-items:center;margin-bottom:12px}
+.edit-row select,.edit-row textarea,.edit-row input{flex:1;padding:9px 12px;border:1px solid var(--border2);border-radius:var(--rs);background:#0f1215;color:var(--text);font-family:var(--font);font-size:.85rem;outline:none;transition:border-color .15s}
+.edit-row select:focus,.edit-row textarea:focus{border-color:var(--accent)}
+.edit-row textarea{resize:vertical;min-height:72px;flex:none;width:100%}
+.notes-wrap{margin-top:8px}
+.manual-badge{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:4px;font-size:.65rem;font-weight:700;background:rgba(167,139,250,.15);color:var(--purple);margin-left:8px}
 @media(max-width:900px){.main{padding:14px}.hide-m{display:none}.detail-grid{grid-template-columns:1fr}}
 @media(max-width:600px){.topbar{padding:12px 14px}.modal{border-radius:14px 14px 0 0;max-height:90vh}}
 </style>
@@ -122,6 +129,10 @@ td{padding:11px 14px;font-size:.84rem;vertical-align:middle}
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/></svg>
       Fetch Orders
     </button>
+    <a href="/logout" class="btn" style="color:var(--text2)">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+      Logout
+    </a>
   </div>
 </header>
 
@@ -161,7 +172,7 @@ td{padding:11px 14px;font-size:.84rem;vertical-align:middle}
 </div>
 
 <script>
-let ALL=[], FILTER='all', SORT={k:'last_updated',d:'desc'}, REFRESHING=false;
+let ALL=[], FILTER='all', SORT={k:'last_updated',d:'desc'}, REFRESHING=false, CURRENT_OID=null;
 const STATUS_LABELS={sold:'Sold',label_created:'Label Created',shipped:'Shipped',in_transit:'In Transit',awaiting_collection:'Awaiting Collection',delivered:'Delivered',completed:'Completed',paid:'Paid',suspended:'Suspended',cancelled:'Cancelled',return_requested:'Return Requested',return_shipped:'Return Shipped',returned:'Returned',refunded:'Refunded',delivery_failed:'Delivery Failed'};
 const LIVE_STATUSES=new Set(['in_transit','shipped','awaiting_collection']);
 
@@ -251,9 +262,13 @@ function render(){
     </tr>`}).join('');
 }
 
+const ALL_STATUSES=['sold','label_created','shipped','in_transit','awaiting_collection','delivered','completed','paid','suspended','cancelled','return_requested','return_shipped','returned','refunded','delivery_failed'];
+
 function showOrder(id){
   const o=ALL.find(x=>x.order_id===id);if(!o)return;
-  document.getElementById('modalTitle').textContent='Order #'+o.order_id;
+  CURRENT_OID=id;
+  const manualBadge=o.manual_status_override?'<span class="manual-badge">✏ Manual</span>':'';
+  document.getElementById('modalTitle').innerHTML='Order #'+esc(o.order_id)+manualBadge;
   const p=o.price?`${o.currency||'£'}${parseFloat(o.price).toFixed(2)}`:'—';
   let h=`<div class="detail-grid">
     <div><label>Item</label><div class="val">${esc(o.item_name)}</div></div>
@@ -284,9 +299,39 @@ function showOrder(id){
     });
     h+=`</div>`;
   }
+  // Edit section
+  const statusOpts=ALL_STATUSES.map(s=>`<option value="${s}"${s===o.current_status?' selected':''}>${STATUS_LABELS[s]||s}</option>`).join('');
+  h+=`<div class="edit-section">
+    <div class="section-title">Manual Override</div>
+    <div class="edit-row">
+      <select id="statusSelect">${statusOpts}</select>
+      <button class="btn btn-primary" onclick="saveStatus()" style="white-space:nowrap">Update Status</button>
+    </div>
+    <div class="section-title" style="margin-top:14px">Notes</div>
+    <div class="notes-wrap">
+      <textarea id="notesInput" placeholder="Add private notes about this order…">${esc(o.notes||'')}</textarea>
+      <button class="btn" onclick="saveNotes()" style="margin-top:8px;width:100%">Save Notes</button>
+    </div>
+  </div>`;
   document.getElementById('modalBody').innerHTML=h;
   document.getElementById('overlay').classList.add('open');
   document.body.style.overflow='hidden';
+}
+
+async function saveStatus(){
+  const s=document.getElementById('statusSelect').value;
+  const r=await fetch(`/api/order/${CURRENT_OID}/status`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({status:s})});
+  const d=await r.json();
+  if(d.success){toast('Status updated','ok');await load();showOrder(CURRENT_OID)}
+  else toast(d.error||'Failed','err');
+}
+
+async function saveNotes(){
+  const n=document.getElementById('notesInput').value;
+  const r=await fetch(`/api/order/${CURRENT_OID}/notes`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({notes:n})});
+  const d=await r.json();
+  if(d.success){toast('Notes saved','ok');await load()}
+  else toast(d.error||'Failed','err');
 }
 
 function sortBy(k){if(SORT.k===k)SORT.d=SORT.d==='asc'?'desc':'asc';else{SORT.k=k;SORT.d='desc'}render()}

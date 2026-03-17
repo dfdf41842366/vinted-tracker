@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(gh auth:*)",
+      "Bash(which git:*)",
+      "Bash(curl:*)",
+      "Bash(npm install:*)",
+      "Bash(railway:*)",
+      "Bash(cd:*)",
+      "Bash(tail:*)",
+      "Bash(open:*)",
+      "Bash(sleep:*)"
+    ]
+  }
+}

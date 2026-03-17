@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Login — Vinted Tracker</title>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#0c0e12;--card:#161a1e;--border:#1e2228;--border2:#2a2f36;--text:#e4e6ea;--text2:#8b929a;--muted:#5c6370;--accent:#09c283;--danger:#ef4444;--r:10px;--font:'Outfit',-apple-system,sans-serif}
+body{font-family:var(--font);background:var(--bg);color:var(--text);min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
+.card{background:var(--card);border:1px solid var(--border);border-radius:16px;padding:36px 32px;width:100%;max-width:380px;box-shadow:0 20px 60px rgba(0,0,0,.4)}
+.logo{width:44px;height:44px;border-radius:10px;background:linear-gradient(135deg,var(--accent),#06a06f);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:20px;color:#fff;margin:0 auto 20px}
+h1{font-size:1.25rem;font-weight:700;text-align:center;margin-bottom:4px}
+.sub{font-size:.8rem;color:var(--muted);text-align:center;margin-bottom:28px}
+label{display:block;font-size:.72rem;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px}
+input{width:100%;padding:10px 14px;border:1px solid var(--border2);border-radius:var(--r);background:#0f1215;color:var(--text);font-family:var(--font);font-size:.9rem;outline:none;margin-bottom:16px;transition:border-color .15s}
+input:focus{border-color:var(--accent)}
+.btn{width:100%;padding:11px;border:none;border-radius:var(--r);background:var(--accent);color:#fff;font-family:var(--font);font-size:.9rem;font-weight:700;cursor:pointer;transition:background .15s;margin-top:4px}
+.btn:hover{background:#07a873}
+.error{background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.25);color:var(--danger);padding:10px 14px;border-radius:var(--r);font-size:.83rem;margin-bottom:18px;text-align:center}
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="logo">V</div>
+  <h1>Vinted Tracker</h1>
+  <div class="sub">Sign in to access your dashboard</div>
+  {% if error %}<div class="error">{{ error }}</div>{% endif %}
+  <form method="post">
+    <label>Username</label>
+    <input type="text" name="username" autocomplete="username" autofocus required>
+    <label>Password</label>
+    <input type="password" name="password" autocomplete="current-password" required>
+    <button type="submit" class="btn">Sign In</button>
+  </form>
+</div>
+</body>
+</html>

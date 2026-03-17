@@ -17,7 +17,8 @@ import hashlib
 import threading
 import logging
 from datetime import datetime, timedelta
-from flask import Flask, jsonify, render_template, send_from_directory, request
+from flask import Flask, jsonify, render_template, send_from_directory, request, session, redirect, url_for
+from functools import wraps
 try:
     from apscheduler.schedulers.background import BackgroundScheduler
     HAS_APSCHEDULER = True
@@ -30,10 +31,13 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(me
 log = logging.getLogger(__name__)
 
 app = Flask(__name__, static_folder='static', template_folder='templates')
+app.secret_key = os.environ.get('SECRET_KEY', 'vinted-tracker-secret-2024')
 
 # ── Configuration from environment ─────────────────────────────────────────
 GMAIL_USER = os.environ.get('GMAIL_USER', '')
 GMAIL_APP_PASSWORD = os.environ.get('GMAIL_APP_PASSWORD', '')
+DASHBOARD_USER = os.environ.get('DASHBOARD_USER', 'admin')
+DASHBOARD_PASSWORD = os.environ.get('DASHBOARD_PASSWORD', 'vinted123')
 IMAP_SERVER = 'imap.gmail.com'
 IMAP_PORT = 993
 SYNC_INTERVAL_MINUTES = int(os.environ.get('SYNC_INTERVAL', '15'))
@@ -424,11 +428,12 @@ def sync_orders(days_back=None, incremental=False):
                         if (e['status'], e['date'][:16]) not in ek:
                             x['events'].append(e)
                     x['events'].sort(key=lambda e: e['date'])
-                    cr = STATUS_RANK.get(x['current_status'], 0)
-                    nr = STATUS_RANK.get(o['current_status'], 0)
-                    if nr < 0 or nr > cr:
-                        x['current_status'] = o['current_status']
-                        x['last_updated'] = o['last_updated']
+                    if not x.get('manual_status_override'):
+                        cr = STATUS_RANK.get(x['current_status'], 0)
+                        nr = STATUS_RANK.get(o['current_status'], 0)
+                        if nr < 0 or nr > cr:
+                            x['current_status'] = o['current_status']
+                            x['last_updated'] = o['last_updated']
                     ef = set(a['filename'] for a in x['attachments'])
                     for a in o['attachments']:
                         if a['filename'] not in ef:
@@ -477,6 +482,17 @@ def save_cache(data):
         json.dump(data, f, indent=2, default=str)
 
 
+# ── Auth ───────────────────────────────────────────────────────────────────
+
+def login_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if not session.get('logged_in'):
+            return redirect(url_for('login'))
+        return f(*args, **kwargs)
+    return decorated
+
+
 # ── Background scheduler ──────────────────────────────────────────────────
 
 def scheduled_sync():
@@ -516,7 +532,26 @@ def start_scheduler():
 # Start scheduler when the app module loads (works with gunicorn)
 start_scheduler()
 
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    error = None
+    if request.method == 'POST':
+        if (request.form.get('username') == DASHBOARD_USER and
+                request.form.get('password') == DASHBOARD_PASSWORD):
+            session['logged_in'] = True
+            return redirect(url_for('index'))
+        error = 'Invalid username or password'
+    return render_template('login.html', error=error)
+
+
+@app.route('/logout')
+def logout():
+    session.clear()
+    return redirect(url_for('login'))
+
+
 @app.route('/')
+@login_required
 def index():
     return render_template('dashboard.html')
 
@@ -535,6 +570,7 @@ def health():
 
 
 @app.route('/api/orders')
+@login_required
 def api_orders():
     with cache_lock:
         c = load_cache()
@@ -556,6 +592,7 @@ def api_orders():
 
 
 @app.route('/api/refresh', methods=['POST'])
+@login_required
 def api_refresh():
     try:
         days = int((request.json or {}).get('days_back', SYNC_DAYS_BACK))
@@ -571,6 +608,7 @@ def api_refresh():
 
 
 @app.route('/api/order/<oid>')
+@login_required
 def api_order(oid):
     with cache_lock:
         c = load_cache()
@@ -578,7 +616,44 @@ def api_order(oid):
     return jsonify(o) if o else (jsonify({'error': 'Not found'}), 404)
 
 
+@app.route('/api/order/<oid>/status', methods=['PUT'])
+@login_required
+def api_update_status(oid):
+    data = request.get_json() or {}
+    new_status = data.get('status', '').strip()
+    if not new_status:
+        return jsonify({'error': 'status required'}), 400
+    with cache_lock:
+        c = load_cache()
+        o = c.get('orders', {}).get(oid)
+        if not o:
+            return jsonify({'error': 'Not found'}), 404
+        o['current_status'] = new_status
+        o['manual_status_override'] = True
+        o['last_updated'] = datetime.now().isoformat()
+        ev = {'status': new_status, 'date': datetime.now().isoformat(), 'detail': '✏️ Manually updated'}
+        o['events'].append(ev)
+        save_cache(c)
+    return jsonify({'success': True})
+
+
+@app.route('/api/order/<oid>/notes', methods=['PUT'])
+@login_required
+def api_update_notes(oid):
+    data = request.get_json() or {}
+    notes = data.get('notes', '')
+    with cache_lock:
+        c = load_cache()
+        o = c.get('orders', {}).get(oid)
+        if not o:
+            return jsonify({'error': 'Not found'}), 404
+        o['notes'] = notes
+        save_cache(c)
+    return jsonify({'success': True})
+
+
 @app.route('/attachments/<path:fp>')
+@login_required
 def serve_att(fp):
     return send_from_directory(ATTACHMENTS_DIR, fp)
 
