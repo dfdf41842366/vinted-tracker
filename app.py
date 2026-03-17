@@ -210,13 +210,19 @@ def save_atts(msg, oid):
 
 # ── Core sync function ─────────────────────────────────────────────────────
 
-def fetch_orders(days_back=90):
-    """Connect to Gmail IMAP and fetch all Vinted order emails."""
+def fetch_orders(days_back=90, since_date=None, known_uids=None):
+    """Connect to Gmail IMAP and fetch Vinted order emails.
+    If since_date is given, only fetch emails after that date (incremental).
+    known_uids: set of 'folder:uid' strings already processed — skip these.
+    """
     if not GMAIL_USER or not GMAIL_APP_PASSWORD:
         raise ValueError("GMAIL_USER and GMAIL_APP_PASSWORD environment variables required")
 
     mail = imaplib.IMAP4_SSL(IMAP_SERVER, IMAP_PORT)
     mail.login(GMAIL_USER, GMAIL_APP_PASSWORD)
+
+    if known_uids is None:
+        known_uids = set()
 
     seen = set()
     events = []
@@ -229,7 +235,11 @@ def fetch_orders(days_back=90):
         except:
             continue
 
-        since = (datetime.now() - timedelta(days=days_back)).strftime('%d-%b-%Y')
+        if since_date:
+            since = since_date.strftime('%d-%b-%Y')
+        else:
+            since = (datetime.now() - timedelta(days=days_back)).strftime('%d-%b-%Y')
+
         for sender in ['no-reply@vinted.co.uk', 'no-reply@vinted.com', 'no-reply@vinted.fr', 'no-reply@vinted.de']:
             try:
                 s, data = mail.search(None, f'(FROM "{sender}" SINCE {since})')
@@ -239,7 +249,7 @@ def fetch_orders(days_back=90):
                 log.info(f"  {folder} / {sender}: {len(uids)} emails")
                 for uid in uids:
                     key = f"{folder}:{uid.decode()}"
-                    if key in seen:
+                    if key in seen or key in known_uids:
                         continue
                     seen.add(key)
                     try:
@@ -253,21 +263,23 @@ def fetch_orders(days_back=90):
                         except:
                             dt = datetime.now()
                         body = get_body(msg)
-                        events.append((dt, subj, body, msg))
+                        events.append((dt, subj, body, msg, key))
                     except Exception as e:
                         log.warning(f"  Error fetching {key}: {e}")
             except Exception as e:
                 log.warning(f"  Search error: {e}")
 
     mail.logout()
-    log.info(f"Total Vinted emails: {len(events)}")
+    log.info(f"New Vinted emails to process: {len(events)}")
 
     events.sort(key=lambda x: x[0])
     item_map = {}
     orders = {}
 
-    for dt, subj, body, msg in events:
+    processed_uids = set()
+    for dt, subj, body, msg, uid_key in events:
         status, item, buyer, price = classify(subj, body)
+        processed_uids.add(uid_key)
         if status is None:
             continue
 
@@ -331,16 +343,28 @@ def fetch_orders(days_back=90):
     for o in orders.values():
         o['events'].sort(key=lambda e: e['date'])
 
-    return orders
+    return orders, processed_uids
 
 
-def sync_orders(days_back=None):
-    """Full sync: fetch from Gmail, merge into cache."""
+def sync_orders(days_back=None, incremental=False):
+    """Sync orders from Gmail. If incremental=True, only fetch emails since last sync."""
     if days_back is None:
         days_back = SYNC_DAYS_BACK
     try:
-        log.info(f"🔄 Syncing orders (last {days_back} days)...")
-        new = fetch_orders(days_back=days_back)
+        with cache_lock:
+            c = load_cache()
+            known_uids = set(c.get('processed_uids', []))
+            last_fetch = c.get('last_fetch')
+
+        since_date = None
+        if incremental and last_fetch:
+            # Go back 1 extra day to avoid missing emails at boundary
+            since_date = datetime.fromisoformat(last_fetch) - timedelta(days=1)
+            log.info(f"🔄 Incremental sync since {since_date.strftime('%d-%b-%Y')}...")
+        else:
+            log.info(f"🔄 Full sync (last {days_back} days)...")
+
+        new, new_uids = fetch_orders(days_back=days_back, since_date=since_date, known_uids=known_uids)
 
         with cache_lock:
             c = load_cache()
@@ -374,9 +398,14 @@ def sync_orders(days_back=None):
                     ex[oid] = o
             c['orders'] = ex
             c['last_fetch'] = datetime.now().isoformat()
+            # Persist processed UIDs (cap at 10000 to avoid bloat)
+            all_uids = known_uids | new_uids
+            if len(all_uids) > 10000:
+                all_uids = set(list(all_uids)[-10000:])
+            c['processed_uids'] = list(all_uids)
             save_cache(c)
 
-        log.info(f"✅ Sync complete: {len(new)} parsed, {len(ex)} total")
+        log.info(f"✅ Sync complete: {len(new)} new emails, {len(ex)} total orders")
         return len(new), len(ex)
 
     except Exception as e:
@@ -404,9 +433,9 @@ def save_cache(data):
 # ── Background scheduler ──────────────────────────────────────────────────
 
 def scheduled_sync():
-    """Background job: sync every N minutes."""
+    """Background job: incremental sync every N minutes (only new emails)."""
     try:
-        sync_orders()
+        sync_orders(incremental=True)
     except Exception as e:
         log.error(f"Scheduled sync failed: {e}")
 
