@@ -180,7 +180,7 @@ td{padding:11px 14px;font-size:.84rem;vertical-align:middle}
 
 <script>
 let ALL=[], FILTER='all', SORT={k:'last_updated',d:'desc'}, REFRESHING=false, CURRENT_OID=null;
-const STATUS_LABELS={sold:'Sold',label_created:'Label Created',shipped:'Shipped',in_transit:'In Transit',awaiting_collection:'Awaiting Collection',delivered:'Delivered',completed:'Completed',paid:'Paid',suspended:'Suspended',cancelled:'Cancelled',return_requested:'Return Requested',return_shipped:'Return Shipped',returned:'Returned',refunded:'Refunded',delivery_failed:'Delivery Failed'};
+const STATUS_LABELS={sold:'Sold',label_created:'Label Printed',shipped:'Dispatched',in_transit:'In Transit',awaiting_collection:'Awaiting Collection',delivered:'Delivered',completed:'Completed',paid:'Paid',suspended:'Suspended',cancelled:'Cancelled',return_requested:'Return Requested',return_shipped:'Return Shipped',returned:'Returned',refunded:'Refunded',delivery_failed:'Delivery Failed'};
 const LIVE_STATUSES=new Set(['in_transit','shipped','awaiting_collection']);
 
 document.addEventListener('DOMContentLoaded',()=>{

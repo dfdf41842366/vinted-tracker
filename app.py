@@ -202,9 +202,17 @@ def classify(subject, body):
         if 'waiting for' in bl and 'collect' in bl:
             m2 = re.search(r'waiting\s+for\s+(\w[\w\d_.-]+)\s+to\s+collect', body)
             return 'awaiting_collection', item, m2.group(1) if m2 else None, None
+        # Physically dispatched — must check BEFORE label_created fallback
+        if ('has been dispatched' in bl or 'has been sent' in bl or 'has been posted' in bl
+                or 'has shipped' in bl or 'item has been shipped' in bl
+                or 'seller has dispatched' in bl or 'order has been dispatched' in bl):
+            return 'shipped', item, None, None
         if 'on its way' in bl or 'parcel is on' in bl:
             return 'in_transit', item, None, None
-        if 'time to ship' in bl:
+        if 'track the parcel' in bl or 'track your' in bl:
+            return 'in_transit', item, None, None
+        # Still waiting to ship — keep in New Sales
+        if 'time to ship' in bl or 'please ship' in bl or 'remember to ship' in bl:
             return 'label_created', item, None, None
         if 'cancelled' in bl and 'refund' in bl:
             return 'cancelled', item, None, None
@@ -212,11 +220,14 @@ def classify(subject, body):
             return 'suspended', item, None, None
         if "wasn't able to deliver" in bl or 'returned to you' in bl:
             return 'delivery_failed', item, None, None
-        if 'track the parcel' in bl:
-            return 'in_transit', item, None, None
         if 'payment' in bl and ('released' in bl or 'transferred' in bl or 'balance' in bl):
             return 'paid', item, None, None
         return 'in_transit', item, None, None
+
+    if ('dispatched' in sl or 'has been shipped' in sl or 'item sent' in sl
+            or 'order shipped' in sl or 'on its way' in sl):
+        m = re.search(r'Order\s+update\s+for\s+(.+)', subject, re.I)
+        return 'shipped', m.group(1).strip() if m else None, None, None
 
     if 'your earnings have been' in sl or 'added to your balance' in bl:
         return 'paid', None, None, None
