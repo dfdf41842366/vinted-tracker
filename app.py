@@ -509,21 +509,6 @@ def serve_att(fp):
 
 # ── App startup ────────────────────────────────────────────────────────────
 
-def start_scheduler():
-    """Start the background sync scheduler."""
-    if GMAIL_USER and GMAIL_APP_PASSWORD:
-        scheduler.add_job(scheduled_sync, 'interval', minutes=SYNC_INTERVAL_MINUTES,
-                          id='vinted_sync', replace_existing=True,
-                          next_run_time=datetime.now() + timedelta(seconds=10))
-        scheduler.start()
-        log.info(f"⏰ Auto-sync scheduled every {SYNC_INTERVAL_MINUTES} minutes")
-    else:
-        log.warning("⚠️  No Gmail credentials — auto-sync disabled")
-
-
-# Start scheduler when the app module loads (works with gunicorn)
-start_scheduler()
-
 
 if __name__ == '__main__':
     log.info(f"\n{'='*55}")
