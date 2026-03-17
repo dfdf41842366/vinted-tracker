@@ -294,7 +294,8 @@ def fetch_orders(days_back=90, since_date=None, known_uids=None, on_batch=None):
                     except Exception as e:
                         log.warning(f"  Header batch error: {e}")
 
-                # Step 2: Fetch text-only body for relevant emails (no attachments = fast)
+                # Step 2: Batch-fetch full RFC822 for relevant emails (50 at a time = fast)
+                relevant_uids = []
                 for uid in new_uids:
                     uid_s = uid.decode()
                     key = f"{folder}:{uid_s}"
@@ -302,48 +303,55 @@ def fetch_orders(days_back=90, since_date=None, known_uids=None, on_batch=None):
                         continue
                     seen.add(key)
                     pending_uids.add(key)
-
                     subj = uid_to_subj.get(uid, '')
                     if subj and not _is_relevant_subject(subj):
-                        continue  # Skip irrelevant
+                        continue
+                    relevant_uids.append(uid)
 
+                log.info(f"  Relevant emails to fetch: {len(relevant_uids)}")
+
+                FETCH_BATCH = 50
+                for i in range(0, len(relevant_uids), FETCH_BATCH):
+                    batch = relevant_uids[i:i+FETCH_BATCH]
+                    uid_str = b','.join(batch)
                     try:
-                        # Fetch header + text body only (no PDF attachments)
-                        s2, md = mail.fetch(uid, '(BODY.PEEK[HEADER] BODY.PEEK[TEXT])')
+                        s2, batch_data = mail.fetch(uid_str, '(RFC822)')
                         if s2 != 'OK':
                             continue
-                        # Reconstruct a minimal message from header + text
-                        header_bytes = b''
-                        text_bytes = b''
-                        for item in md:
-                            if not isinstance(item, tuple):
+                        # Response: [(b'N (RFC822 {size}', b'bytes'), b')', ...]
+                        for item in batch_data:
+                            if not isinstance(item, tuple) or len(item) < 2:
                                 continue
-                            desc = item[0].decode() if isinstance(item[0], bytes) else str(item[0])
-                            if 'HEADER' in desc and 'TEXT' not in desc:
-                                header_bytes = item[1]
-                            elif 'TEXT' in desc:
-                                text_bytes = item[1]
-                        if not header_bytes:
-                            continue
-                        msg = email.message_from_bytes(header_bytes + b'\r\n' + text_bytes)
-                        subj = decode_hdr(msg.get('Subject', ''))
-                        try:
-                            dt = email.utils.parsedate_to_datetime(msg.get('Date', ''))
-                        except:
-                            dt = datetime.now()
-                        body = get_body(msg)
-                        pending_events.append((dt, subj, body, msg, key))
-                        all_events.append((dt, subj, body, msg, key))
+                            try:
+                                raw = item[1]
+                                desc = item[0].decode() if isinstance(item[0], bytes) else str(item[0])
+                                # Extract seq number to build key
+                                m = re.search(r'^(\d+) \(', desc)
+                                if not m:
+                                    continue
+                                seq = m.group(1)
+                                key = f"{folder}:{seq}"
+                                msg = email.message_from_bytes(raw)
+                                subj = decode_hdr(msg.get('Subject', ''))
+                                try:
+                                    dt = email.utils.parsedate_to_datetime(msg.get('Date', ''))
+                                except:
+                                    dt = datetime.now()
+                                body = get_body(msg)
+                                pending_events.append((dt, subj, body, msg, key))
+                                all_events.append((dt, subj, body, msg, key))
+                            except Exception as e:
+                                log.warning(f"  Parse error in batch: {e}")
 
-                        # Save partial results every SAVE_EVERY relevant emails
-                        if on_batch and len(pending_events) >= SAVE_EVERY:
+                        # Save partial results after each batch
+                        if on_batch and pending_events:
                             all_processed_uids |= pending_uids
                             on_batch(list(pending_events), set(pending_uids))
                             pending_events.clear()
                             pending_uids.clear()
 
                     except Exception as e:
-                        log.warning(f"  Error fetching {key}: {e}")
+                        log.warning(f"  Batch fetch error: {e}")
 
             except Exception as e:
                 log.warning(f"  Search error: {e}")
