@@ -224,9 +224,11 @@ def _is_relevant_subject(subj):
     return any(k in sl for k in RELEVANT_SUBJECTS)
 
 
-def fetch_orders(days_back=90, since_date=None, known_uids=None):
+def fetch_orders(days_back=90, since_date=None, known_uids=None, on_batch=None):
     """Connect to Gmail IMAP and fetch Vinted order emails.
-    Uses batch header fetching for speed — only downloads full body for relevant emails.
+    - Batch-fetches headers to filter by subject first
+    - Fetches text-only body (no attachments) — much faster
+    - Calls on_batch(events, processed_uids) every 50 relevant emails for incremental saves
     """
     if not GMAIL_USER or not GMAIL_APP_PASSWORD:
         raise ValueError("GMAIL_USER and GMAIL_APP_PASSWORD environment variables required")
@@ -238,7 +240,11 @@ def fetch_orders(days_back=90, since_date=None, known_uids=None):
         known_uids = set()
 
     seen = set()
-    events = []
+    all_events = []
+    all_processed_uids = set()
+    pending_events = []
+    pending_uids = set()
+    SAVE_EVERY = 50
 
     for folder in ['"[Gmail]/All Mail"', 'INBOX']:
         try:
@@ -259,19 +265,21 @@ def fetch_orders(days_back=90, since_date=None, known_uids=None):
                 if s != 'OK' or not data[0]:
                     continue
                 all_uids = data[0].split()
-                new_uids = [u for u in all_uids if f"{folder}:{u.decode()}" not in seen and f"{folder}:{u.decode()}" not in known_uids]
+                new_uids = [u for u in all_uids
+                            if f"{folder}:{u.decode()}" not in seen
+                            and f"{folder}:{u.decode()}" not in known_uids]
                 log.info(f"  {folder} / {sender}: {len(all_uids)} total, {len(new_uids)} new")
                 if not new_uids:
                     continue
 
-                # Step 1: Batch-fetch headers only (fast — one round trip per 50 emails)
-                uid_to_meta = {}
-                BATCH = 50
+                # Step 1: Batch-fetch headers to filter by subject (fast)
+                uid_to_subj = {}
+                BATCH = 100
                 for i in range(0, len(new_uids), BATCH):
                     batch = new_uids[i:i+BATCH]
                     uid_str = b','.join(batch)
                     try:
-                        s2, hdata = mail.fetch(uid_str, '(RFC822.HEADER)')
+                        s2, hdata = mail.fetch(uid_str, '(BODY.PEEK[HEADER.FIELDS (SUBJECT DATE)])')
                         if s2 != 'OK':
                             continue
                         for item in hdata:
@@ -279,64 +287,90 @@ def fetch_orders(days_back=90, since_date=None, known_uids=None):
                                 continue
                             hdr_msg = email.message_from_bytes(item[1])
                             subj = decode_hdr(hdr_msg.get('Subject', ''))
-                            date_str = hdr_msg.get('Date', '')
-                            # Extract UID from the response descriptor
                             desc = item[0].decode() if isinstance(item[0], bytes) else str(item[0])
                             m = re.search(r'(\d+) \(', desc)
                             if m:
-                                uid_to_meta[m.group(1).encode()] = (subj, date_str)
+                                uid_to_subj[m.group(1).encode()] = subj
                     except Exception as e:
                         log.warning(f"  Header batch error: {e}")
 
-                # Step 2: Only fetch full RFC822 for emails with relevant subjects
+                # Step 2: Fetch text-only body for relevant emails (no attachments = fast)
                 for uid in new_uids:
                     uid_s = uid.decode()
                     key = f"{folder}:{uid_s}"
                     if key in seen:
                         continue
                     seen.add(key)
+                    pending_uids.add(key)
 
-                    meta = uid_to_meta.get(uid)
-                    if meta:
-                        subj, date_str = meta
-                        if not _is_relevant_subject(subj):
-                            continue  # Skip irrelevant emails entirely
+                    subj = uid_to_subj.get(uid, '')
+                    if subj and not _is_relevant_subject(subj):
+                        continue  # Skip irrelevant
 
                     try:
-                        s2, md = mail.fetch(uid, '(RFC822)')
+                        # Fetch header + text body only (no PDF attachments)
+                        s2, md = mail.fetch(uid, '(BODY.PEEK[HEADER] BODY.PEEK[TEXT])')
                         if s2 != 'OK':
                             continue
-                        msg = email.message_from_bytes(md[0][1])
+                        # Reconstruct a minimal message from header + text
+                        header_bytes = b''
+                        text_bytes = b''
+                        for item in md:
+                            if not isinstance(item, tuple):
+                                continue
+                            desc = item[0].decode() if isinstance(item[0], bytes) else str(item[0])
+                            if 'HEADER' in desc and 'TEXT' not in desc:
+                                header_bytes = item[1]
+                            elif 'TEXT' in desc:
+                                text_bytes = item[1]
+                        if not header_bytes:
+                            continue
+                        msg = email.message_from_bytes(header_bytes + b'\r\n' + text_bytes)
                         subj = decode_hdr(msg.get('Subject', ''))
                         try:
                             dt = email.utils.parsedate_to_datetime(msg.get('Date', ''))
                         except:
                             dt = datetime.now()
                         body = get_body(msg)
-                        events.append((dt, subj, body, msg, key))
+                        pending_events.append((dt, subj, body, msg, key))
+                        all_events.append((dt, subj, body, msg, key))
+
+                        # Save partial results every SAVE_EVERY relevant emails
+                        if on_batch and len(pending_events) >= SAVE_EVERY:
+                            all_processed_uids |= pending_uids
+                            on_batch(list(pending_events), set(pending_uids))
+                            pending_events.clear()
+                            pending_uids.clear()
+
                     except Exception as e:
                         log.warning(f"  Error fetching {key}: {e}")
 
             except Exception as e:
                 log.warning(f"  Search error: {e}")
 
-    mail.logout()
-    log.info(f"New Vinted emails to process: {len(events)}")
+    # Final partial save for remaining emails
+    if on_batch and pending_events:
+        all_processed_uids |= pending_uids
+        on_batch(list(pending_events), set(pending_uids))
 
-    events.sort(key=lambda x: x[0])
+    mail.logout()
+    all_processed_uids |= pending_uids
+    log.info(f"New Vinted emails fetched: {len(all_events)}")
+    final_orders = _process_events(all_events)
+    return final_orders, all_processed_uids
+
+
+def _process_events(events):
+    """Turn a list of (dt, subj, body, msg, key) into an orders dict."""
+    events_sorted = sorted(events, key=lambda x: x[0])
     item_map = {}
     orders = {}
-
-    processed_uids = set()
-    for dt, subj, body, msg, uid_key in events:
+    for dt, subj, body, msg, uid_key in events_sorted:
         status, item, buyer, price = classify(subj, body)
-        processed_uids.add(uid_key)
         if status is None:
             continue
-
         oid = get_order_id_from_attachments(msg)
         nk = norm_item(item)
-
         if oid and nk:
             item_map[nk] = oid
         elif nk and nk in item_map:
@@ -352,11 +386,9 @@ def fetch_orders(days_back=90, since_date=None, known_uids=None):
                 item_map[nk] = oid
         else:
             continue
-
         diso = dt.isoformat()
         atts = save_atts(msg, oid)
         ev = {'status': status, 'date': diso, 'detail': subj}
-
         if oid in orders:
             o = orders[oid]
             ekeys = set((e['status'], e['date'][:16]) for e in o['events'])
@@ -390,11 +422,41 @@ def fetch_orders(days_back=90, since_date=None, known_uids=None):
                 'is_return': status in ('return_requested', 'return_shipped', 'returned', 'refunded', 'delivery_failed'),
                 'is_cancelled': status == 'cancelled',
             }
-
     for o in orders.values():
         o['events'].sort(key=lambda e: e['date'])
+    return orders
 
-    return orders, processed_uids
+
+def _merge_orders(existing, new_orders):
+    """Merge new_orders into existing dict in-place."""
+    for oid, o in new_orders.items():
+        if oid in existing:
+            x = existing[oid]
+            ek = set((e['status'], e['date'][:16]) for e in x['events'])
+            for e in o['events']:
+                if (e['status'], e['date'][:16]) not in ek:
+                    x['events'].append(e)
+            x['events'].sort(key=lambda e: e['date'])
+            if not x.get('manual_status_override'):
+                cr = STATUS_RANK.get(x['current_status'], 0)
+                nr = STATUS_RANK.get(o['current_status'], 0)
+                if nr < 0 or nr > cr:
+                    x['current_status'] = o['current_status']
+                    x['last_updated'] = o['last_updated']
+            ef = set(a['filename'] for a in x['attachments'])
+            for a in o['attachments']:
+                if a['filename'] not in ef:
+                    x['attachments'].append(a)
+            x['is_return'] = x.get('is_return') or o.get('is_return')
+            x['is_cancelled'] = x.get('is_cancelled') or o.get('is_cancelled')
+            if not x.get('price') and o.get('price'):
+                x['price'] = o['price']
+            if not x.get('buyer') and o.get('buyer'):
+                x['buyer'] = o['buyer']
+            if o.get('item_name') and len(o['item_name']) > len(x.get('item_name', '')):
+                x['item_name'] = o['item_name']
+        else:
+            existing[oid] = o
 
 
 def sync_orders(days_back=None, incremental=False):
@@ -415,49 +477,34 @@ def sync_orders(days_back=None, incremental=False):
         else:
             log.info(f"🔄 Full sync (last {days_back} days)...")
 
-        new, new_uids = fetch_orders(days_back=days_back, since_date=since_date, known_uids=known_uids)
+        def _partial_save(events_batch, uids_batch):
+            """Save partial results during scan so dashboard shows data immediately."""
+            partial_orders, _ = _process_events(events_batch)
+            with cache_lock:
+                c2 = load_cache()
+                ex2 = c2.get('orders', {})
+                _merge_orders(ex2, partial_orders)
+                c2['orders'] = ex2
+                c2['processed_uids'] = list(set(c2.get('processed_uids', [])) | uids_batch)
+                save_cache(c2)
+            log.info(f"  💾 Partial save: {len(partial_orders)} orders processed so far")
+
+        new, new_uids = fetch_orders(days_back=days_back, since_date=since_date,
+                                     known_uids=known_uids, on_batch=_partial_save)
 
         with cache_lock:
             c = load_cache()
             ex = c.get('orders', {})
-            for oid, o in new.items():
-                if oid in ex:
-                    x = ex[oid]
-                    ek = set((e['status'], e['date'][:16]) for e in x['events'])
-                    for e in o['events']:
-                        if (e['status'], e['date'][:16]) not in ek:
-                            x['events'].append(e)
-                    x['events'].sort(key=lambda e: e['date'])
-                    if not x.get('manual_status_override'):
-                        cr = STATUS_RANK.get(x['current_status'], 0)
-                        nr = STATUS_RANK.get(o['current_status'], 0)
-                        if nr < 0 or nr > cr:
-                            x['current_status'] = o['current_status']
-                            x['last_updated'] = o['last_updated']
-                    ef = set(a['filename'] for a in x['attachments'])
-                    for a in o['attachments']:
-                        if a['filename'] not in ef:
-                            x['attachments'].append(a)
-                    x['is_return'] = x.get('is_return') or o.get('is_return')
-                    x['is_cancelled'] = x.get('is_cancelled') or o.get('is_cancelled')
-                    if not x.get('price') and o.get('price'):
-                        x['price'] = o['price']
-                    if not x.get('buyer') and o.get('buyer'):
-                        x['buyer'] = o['buyer']
-                    if o.get('item_name') and len(o['item_name']) > len(x.get('item_name', '')):
-                        x['item_name'] = o['item_name']
-                else:
-                    ex[oid] = o
+            _merge_orders(ex, new)
             c['orders'] = ex
             c['last_fetch'] = datetime.now().isoformat()
-            # Persist processed UIDs (cap at 10000 to avoid bloat)
             all_uids = known_uids | new_uids
             if len(all_uids) > 10000:
                 all_uids = set(list(all_uids)[-10000:])
             c['processed_uids'] = list(all_uids)
             save_cache(c)
 
-        log.info(f"✅ Sync complete: {len(new)} new emails, {len(ex)} total orders")
+        log.info(f"✅ Sync complete: {len(new)} orders parsed, {len(ex)} total")
         return len(new), len(ex)
 
     except Exception as e:
