@@ -105,6 +105,8 @@ td{padding:11px 14px;font-size:.84rem;vertical-align:middle}
 
 .live-dot{width:7px;height:7px;border-radius:50%;background:var(--accent);box-shadow:0 0 6px var(--accent);display:inline-block}
 
+.dispatch{display:inline-flex;align-items:center;gap:5px;font-size:.78rem;font-weight:600;white-space:nowrap}
+.dispatch.ok{color:var(--accent)}.dispatch.warn{color:var(--warn)}.dispatch.urgent{color:var(--danger)}.dispatch.overdue{color:var(--danger);text-decoration:line-through;opacity:.7}.dispatch.done{color:var(--muted);font-weight:400}
 .edit-section{margin-top:22px;padding-top:18px;border-top:1px solid var(--border)}
 .edit-row{display:flex;gap:8px;align-items:center;margin-bottom:12px}
 .edit-row select,.edit-row textarea,.edit-row input{flex:1;padding:9px 12px;border:1px solid var(--border2);border-radius:var(--rs);background:#0f1215;color:var(--text);font-family:var(--font);font-size:.85rem;outline:none;transition:border-color .15s}
@@ -152,6 +154,7 @@ td{padding:11px 14px;font-size:.84rem;vertical-align:middle}
       <th onclick="sortBy('price')">Price</th>
       <th onclick="sortBy('buyer')" class="hide-m">Buyer</th>
       <th onclick="sortBy('current_status')">Status</th>
+      <th onclick="sortBy('first_seen')">Dispatch</th>
       <th class="hide-m">Files</th>
       <th onclick="sortBy('last_updated')">Updated</th>
     </tr></thead><tbody id="tbody"></tbody></table>
@@ -257,6 +260,7 @@ function render(){
       <td class="td-price">${p}</td>
       <td class="td-buyer hide-m">${esc(o.buyer||'—')}</td>
       <td><span class="badge b-${o.current_status||'unknown'}"><span class="dot${live?' pulse':''}"></span>${STATUS_LABELS[o.current_status]||o.current_status||'Unknown'}</span></td>
+      <td>${dispatchCountdown(o)}</td>
       <td class="hide-m">${att||'<span style="color:var(--muted)">—</span>'}</td>
       <td class="td-date">${fmtDate(o.last_updated)}</td>
     </tr>`}).join('');
@@ -275,6 +279,7 @@ function showOrder(id){
     <div><label>Status</label><div><span class="badge b-${o.current_status}"><span class="dot"></span>${STATUS_LABELS[o.current_status]||o.current_status}</span></div></div>
     <div><label>Price</label><div class="val">${p}</div></div>
     <div><label>Buyer</label><div class="val">${esc(o.buyer||'—')}</div></div>
+    <div><label>Dispatch By</label><div class="val">${dispatchCountdown(o)}</div></div>
   </div>`;
   if(o.events&&o.events.length){
     h+=`<div class="section-title">Status Timeline</div><div class="timeline">`;
@@ -337,6 +342,44 @@ async function saveNotes(){
 function sortBy(k){if(SORT.k===k)SORT.d=SORT.d==='asc'?'desc':'asc';else{SORT.k=k;SORT.d='desc'}render()}
 function closeModal(e){if(e&&e.target!==document.getElementById('overlay'))return;document.getElementById('overlay').classList.remove('open');document.body.style.overflow=''}
 document.addEventListener('keydown',e=>{if(e.key==='Escape')closeModal()});
+
+// Vinted gives 5 days to dispatch from the sold date
+const DISPATCH_DAYS = 5;
+
+function dispatchCountdown(o) {
+  const NEEDS_DISPATCH = ['sold','label_created'];
+  const SHIPPED = ['shipped','in_transit','awaiting_collection','delivered','completed','paid','return_requested','return_shipped','returned','refunded','delivery_failed'];
+
+  if (SHIPPED.some(s => o.current_status === s)) {
+    return '<span class="dispatch done">Dispatched</span>';
+  }
+  if (!NEEDS_DISPATCH.includes(o.current_status)) return '—';
+
+  // Find the sold event date
+  const soldEv = o.events && o.events.find(e => e.status === 'sold');
+  const base = soldEv ? soldEv.date : o.first_seen;
+  if (!base) return '—';
+
+  const deadline = new Date(base);
+  deadline.setDate(deadline.getDate() + DISPATCH_DAYS);
+  const now = new Date();
+  const diff = deadline - now;
+
+  if (diff <= 0) {
+    return '<span class="dispatch overdue">⚠ Overdue</span>';
+  }
+
+  const days = Math.floor(diff / 86400000);
+  const hours = Math.floor((diff % 86400000) / 3600000);
+  const mins = Math.floor((diff % 3600000) / 60000);
+
+  let cls = 'ok', label = '';
+  if (diff < 86400000) { cls = 'urgent'; label = `${hours}h ${mins}m`; }
+  else if (diff < 2 * 86400000) { cls = 'warn'; label = `${days}d ${hours}h`; }
+  else { label = `${days}d ${hours}h`; }
+
+  return `<span class="dispatch ${cls}">⏱ ${label}</span>`;
+}
 
 function fmtDate(iso){if(!iso)return'—';try{const d=new Date(iso),n=new Date(),df=n-d;if(df<3600000)return Math.max(1,Math.floor(df/60000))+'m ago';if(df<86400000)return Math.floor(df/3600000)+'h ago';if(df<604800000)return Math.floor(df/86400000)+'d ago';return d.toLocaleDateString('en-GB',{day:'numeric',month:'short'})}catch{return iso.slice(0,10)}}
 function fmtFull(iso){if(!iso)return'—';const d=new Date(iso);return d.toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'})+' '+d.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'})}
