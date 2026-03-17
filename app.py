@@ -708,6 +708,21 @@ def api_refresh():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+@app.route('/api/rescan', methods=['POST'])
+@login_required
+def api_rescan():
+    """Force a full rescan by clearing processed UIDs, then sync."""
+    try:
+        with cache_lock:
+            c = load_cache()
+            c['processed_uids'] = []
+            save_cache(c)
+        new_count, total = sync_orders(days_back=SYNC_DAYS_BACK, incremental=False)
+        return jsonify({'success': True, 'message': f'Rescan complete: {total} orders'})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 @app.route('/api/order/<oid>')
 @login_required
 def api_order(oid):

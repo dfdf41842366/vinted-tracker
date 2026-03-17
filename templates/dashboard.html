@@ -127,6 +127,10 @@ td{padding:11px 14px;font-size:.84rem;vertical-align:middle}
   </div>
   <div style="display:flex;gap:8px;align-items:center">
     <span id="syncStatus" style="font-size:.72rem;color:var(--muted);display:flex;align-items:center;gap:6px"><span class="live-dot"></span>Ready</span>
+    <button class="btn" onclick="rescanAll()" id="rescanBtn" title="Full re-scan all emails (extracts deadlines)">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg>
+      Rescan
+    </button>
     <button class="btn btn-primary" onclick="refresh()" id="refreshBtn">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/></svg>
       Fetch Orders
@@ -321,6 +325,19 @@ function showOrder(id){
   document.getElementById('modalBody').innerHTML=h;
   document.getElementById('overlay').classList.add('open');
   document.body.style.overflow='hidden';
+}
+
+async function rescanAll(){
+  if(!confirm('This will re-scan all emails to extract dispatch deadlines. Takes ~30 seconds. Continue?')) return;
+  const btn=document.getElementById('rescanBtn');
+  btn.innerHTML='<div class="spinner"></div> Scanning…';btn.disabled=true;
+  try{
+    const r=await fetch('/api/rescan',{method:'POST'});
+    const d=await r.json();
+    if(d.success){toast(d.message,'ok');await load()}
+    else toast(d.error||'Failed','err');
+  }catch(e){toast('Error','err')}
+  finally{btn.innerHTML='<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/></svg> Rescan';btn.disabled=false}
 }
 
 async function saveStatus(){
