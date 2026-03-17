@@ -629,7 +629,7 @@ def health():
 def api_orders():
     with cache_lock:
         c = load_cache()
-    orders = list(c.get('orders', {}).values())
+    orders = [o for o in c.get('orders', {}).values() if o.get('buyer')]
     orders.sort(key=lambda o: o.get('last_updated', ''), reverse=True)
     active = [o for o in orders if not o.get('is_cancelled')]
     stats = {
