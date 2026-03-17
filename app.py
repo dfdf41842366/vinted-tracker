@@ -125,6 +125,47 @@ def get_order_id_from_attachments(msg):
     return None
 
 
+MONTHS = {'january':1,'february':2,'march':3,'april':4,'may':5,'june':6,
+          'july':7,'august':8,'september':9,'october':10,'november':11,'december':12,
+          'jan':1,'feb':2,'mar':3,'apr':4,'jun':6,'jul':7,'aug':8,
+          'sep':9,'sept':9,'oct':10,'nov':11,'dec':12}
+
+def extract_dispatch_deadline(body):
+    """Extract the dispatch-by date from Vinted sold email body."""
+    bl = body.lower()
+    # Patterns like: "dispatch by 22 March 2026", "ship by Wednesday, 22 March",
+    # "post by 22 March", "send by March 22", "by 22nd March"
+    patterns = [
+        r'(?:dispatch|ship|post|send|despatch)\s+(?:it\s+)?by\s+(?:\w+,?\s+)?(\d{1,2})(?:st|nd|rd|th)?\s+(\w+)(?:\s+(\d{4}))?',
+        r'(?:dispatch|ship|post|send|despatch)\s+(?:it\s+)?by\s+(?:\w+,?\s+)?(\w+)\s+(\d{1,2})(?:st|nd|rd|th)?(?:\s+(\d{4}))?',
+        r'by\s+(?:\w+,?\s+)?(\d{1,2})(?:st|nd|rd|th)?\s+(\w+)(?:\s+(\d{4}))?\s+to\s+(?:ship|dispatch|send|post)',
+        r'latest\s+(?:dispatch\s+)?(?:date|by)[:\s]+(?:\w+,?\s+)?(\d{1,2})(?:st|nd|rd|th)?\s+(\w+)(?:\s+(\d{4}))?',
+    ]
+    for pat in patterns:
+        m = re.search(pat, bl)
+        if m:
+            groups = m.groups()
+            try:
+                # Try day-month-year format
+                day, mon_str, year = None, None, None
+                if groups[0] and groups[0].isdigit():
+                    day, mon_str, year = int(groups[0]), groups[1], groups[2]
+                elif groups[1] and groups[1].isdigit():
+                    mon_str, day, year = groups[0], int(groups[1]), groups[2]
+                if day and mon_str:
+                    month = MONTHS.get(mon_str.lower()[:3])
+                    if month:
+                        yr = int(year) if year and year.isdigit() else datetime.now().year
+                        # If month already passed this year, assume next year
+                        d = datetime(yr, month, day)
+                        if d < datetime.now() - timedelta(days=365):
+                            d = datetime(yr + 1, month, day)
+                        return d.isoformat()
+            except:
+                pass
+    return None
+
+
 def classify(subject, body):
     sl = subject.lower()
     bl = body.lower()
@@ -134,6 +175,7 @@ def classify(subject, body):
         if m:
             return 'sold', m.group(2).strip(), m.group(1), float(m.group(3))
         return 'sold', None, None, None
+
 
     if 'shipping label' in sl:
         m = re.search(r'^(.+?)\s+shipping\s+label', subject, re.I)
@@ -397,6 +439,7 @@ def _process_events(events):
         diso = dt.isoformat()
         atts = save_atts(msg, oid)
         ev = {'status': status, 'date': diso, 'detail': subj}
+        dispatch_deadline = extract_dispatch_deadline(body) if status == 'sold' else None
         if oid in orders:
             o = orders[oid]
             ekeys = set((e['status'], e['date'][:16]) for e in o['events'])
@@ -413,6 +456,8 @@ def _process_events(events):
                 o['buyer'] = buyer
             if price and not o.get('price'):
                 o['price'] = price
+            if dispatch_deadline and not o.get('dispatch_deadline'):
+                o['dispatch_deadline'] = dispatch_deadline
             ef = set(a['filename'] for a in o['attachments'])
             for a in atts:
                 if a['filename'] not in ef:
@@ -427,6 +472,7 @@ def _process_events(events):
                 'price': price, 'currency': '£', 'buyer': buyer,
                 'current_status': status, 'first_seen': diso, 'last_updated': diso,
                 'events': [ev], 'attachments': atts,
+                'dispatch_deadline': dispatch_deadline,
                 'is_return': status in ('return_requested', 'return_shipped', 'returned', 'refunded', 'delivery_failed'),
                 'is_cancelled': status == 'cancelled',
             }
