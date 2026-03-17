@@ -487,7 +487,7 @@ def sync_orders(days_back=None, incremental=False):
 
         def _partial_save(events_batch, uids_batch):
             """Save partial results during scan so dashboard shows data immediately."""
-            partial_orders, _ = _process_events(events_batch)
+            partial_orders = _process_events(events_batch)
             with cache_lock:
                 c2 = load_cache()
                 ex2 = c2.get('orders', {})
