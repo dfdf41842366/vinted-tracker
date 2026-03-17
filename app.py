@@ -210,10 +210,19 @@ def save_atts(msg, oid):
 
 # ── Core sync function ─────────────────────────────────────────────────────
 
+RELEVANT_SUBJECTS = [
+    'sold an item', 'shipping label', 'wants to cancel', 'cancel a transaction',
+    'return shipping payment', 'order update', 'your earnings have been',
+]
+
+def _is_relevant_subject(subj):
+    sl = subj.lower()
+    return any(k in sl for k in RELEVANT_SUBJECTS)
+
+
 def fetch_orders(days_back=90, since_date=None, known_uids=None):
     """Connect to Gmail IMAP and fetch Vinted order emails.
-    If since_date is given, only fetch emails after that date (incremental).
-    known_uids: set of 'folder:uid' strings already processed — skip these.
+    Uses batch header fetching for speed — only downloads full body for relevant emails.
     """
     if not GMAIL_USER or not GMAIL_APP_PASSWORD:
         raise ValueError("GMAIL_USER and GMAIL_APP_PASSWORD environment variables required")
@@ -245,16 +254,53 @@ def fetch_orders(days_back=90, since_date=None, known_uids=None):
                 s, data = mail.search(None, f'(FROM "{sender}" SINCE {since})')
                 if s != 'OK' or not data[0]:
                     continue
-                uids = data[0].split()
-                log.info(f"  {folder} / {sender}: {len(uids)} emails")
-                for uid in uids:
-                    key = f"{folder}:{uid.decode()}"
-                    if key in seen or key in known_uids:
+                all_uids = data[0].split()
+                new_uids = [u for u in all_uids if f"{folder}:{u.decode()}" not in seen and f"{folder}:{u.decode()}" not in known_uids]
+                log.info(f"  {folder} / {sender}: {len(all_uids)} total, {len(new_uids)} new")
+                if not new_uids:
+                    continue
+
+                # Step 1: Batch-fetch headers only (fast — one round trip per 50 emails)
+                uid_to_meta = {}
+                BATCH = 50
+                for i in range(0, len(new_uids), BATCH):
+                    batch = new_uids[i:i+BATCH]
+                    uid_str = b','.join(batch)
+                    try:
+                        s2, hdata = mail.fetch(uid_str, '(RFC822.HEADER)')
+                        if s2 != 'OK':
+                            continue
+                        for item in hdata:
+                            if not isinstance(item, tuple):
+                                continue
+                            hdr_msg = email.message_from_bytes(item[1])
+                            subj = decode_hdr(hdr_msg.get('Subject', ''))
+                            date_str = hdr_msg.get('Date', '')
+                            # Extract UID from the response descriptor
+                            desc = item[0].decode() if isinstance(item[0], bytes) else str(item[0])
+                            m = re.search(r'(\d+) \(', desc)
+                            if m:
+                                uid_to_meta[m.group(1).encode()] = (subj, date_str)
+                    except Exception as e:
+                        log.warning(f"  Header batch error: {e}")
+
+                # Step 2: Only fetch full RFC822 for emails with relevant subjects
+                for uid in new_uids:
+                    uid_s = uid.decode()
+                    key = f"{folder}:{uid_s}"
+                    if key in seen:
                         continue
                     seen.add(key)
+
+                    meta = uid_to_meta.get(uid)
+                    if meta:
+                        subj, date_str = meta
+                        if not _is_relevant_subject(subj):
+                            continue  # Skip irrelevant emails entirely
+
                     try:
-                        s, md = mail.fetch(uid, '(RFC822)')
-                        if s != 'OK':
+                        s2, md = mail.fetch(uid, '(RFC822)')
+                        if s2 != 'OK':
                             continue
                         msg = email.message_from_bytes(md[0][1])
                         subj = decode_hdr(msg.get('Subject', ''))
@@ -266,6 +312,7 @@ def fetch_orders(days_back=90, since_date=None, known_uids=None):
                         events.append((dt, subj, body, msg, key))
                     except Exception as e:
                         log.warning(f"  Error fetching {key}: {e}")
+
             except Exception as e:
                 log.warning(f"  Search error: {e}")
 
